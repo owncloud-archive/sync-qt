@@ -400,6 +400,11 @@ void SyncWindow::on_time_valueChanged(int value)
     ui->buttonSave->setEnabled(true);
 }
 
+void SyncWindow::on_checkBoxHostnameEncryption_clicked()
+{
+   ui->buttonSave->setEnabled(true);
+}
+
 void SyncWindow::on_conflict_clicked()
 {
     // Clear the table
@@ -1085,3 +1090,4 @@ void SyncWindow::on_configurationBox_rejected()
     // Finally return to the main window
     ui->stackedWidget->setCurrentIndex(0);
 }
+
