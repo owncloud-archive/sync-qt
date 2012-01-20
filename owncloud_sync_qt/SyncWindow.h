@@ -98,6 +98,7 @@ private:
     bool mHideOnClose;
     qint64 mSaveLogCounter;
     qint64 mSaveDBTime;
+    bool mProcessedPasswordManager;
 
     QIcon mDefaultIcon;
     QIcon mSyncIcon;
@@ -193,6 +194,8 @@ private slots:
     void on_configurationBox_accepted();
     void on_configurationBox_rejected();
     void on_checkBoxHostnameEncryption_clicked();
+    void on_buttonConflictLocalWinsAll_clicked();
+    void on_buttonConflictServerWinsAll_clicked();
 };
 
 // Now create a global filter list
@@ -205,6 +208,9 @@ inline QList<SyncIncludedFilterList> g_GetIncludedFilterList()
 
     // LibreOffice/OpenOffice lock files
     list.append(SyncIncludedFilterList("libreoffice_lock",".~lock.*#","LibreOffice/OpenOffice lock files",true));
+
+    // Kate swap files
+    list.append(SyncIncludedFilterList("kate_tmp","*.kate-swp", "Kate temporary file", true));
 
     // General temporary files that I know of
     list.append(SyncIncludedFilterList("tmp1","~*","General Temporary Files",true));

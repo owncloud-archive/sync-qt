@@ -5,6 +5,7 @@
 OwnPasswordManager::OwnPasswordManager(QObject *parent, WId winID )
     : QObject(parent)
 {
+    mIsReady = false;
 #ifdef Q_OS_LINUX
     QProcess p;
     QStringList args;
@@ -12,7 +13,11 @@ OwnPasswordManager::OwnPasswordManager(QObject *parent, WId winID )
     p.start("pidof",args);
     p.waitForFinished(-1);
     if(p.readAllStandardOutput()!="") {
+#if defined(OCS_USE_KWALLET)
         mPasswordManagerLinux = KWALLET;
+#else
+        mPasswordManagerLinux = NONE;
+#endif
     } else {
         args.clear();
         args.push_back("gnome-session");
@@ -32,9 +37,18 @@ OwnPasswordManager::OwnPasswordManager(QObject *parent, WId winID )
     }
 #endif // OCS_USE_KWALLET
     if(mPasswordManagerLinux != KWALLET ) {
+        mIsReady = true;
         emit managerReady();
     }
 #endif // Q_OS_LINUX
+
+#ifdef Q_OS_MAC_OS_X
+    mIsReady = true;
+#endif // Q_OS_MAC_OS_X
+
+#ifdef Q_OS_WIN
+    mIsReady = true;
+#endif // Q_OS_WIN
 }
 
 bool OwnPasswordManager::savePassword(QString name, QString pass)
@@ -45,8 +59,10 @@ bool OwnPasswordManager::savePassword(QString name, QString pass)
     if(mPasswordManagerLinux == KWALLET) {
         QMap<QString,QString> map;
         map[name] = pass;
-        if( mKWallet )
+        if( mKWallet ) {
             mKWallet->writeMap(name,map);
+            return true;
+        }
     }
 #endif
 
@@ -107,6 +123,7 @@ void OwnPasswordManager::kwalletOpened(bool ok)
     if( ok && (mKWallet->hasFolder("owncloud_sync")
          || mKWallet->createFolder("owncloud_sync"))
          && mKWallet->setFolder("owncloud_sync") ){
+        mIsReady = true;
         emit managerReady();
             //emit toLog("Wallet opened!");
             syncDebug() << "Wallet opened!";
