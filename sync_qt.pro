@@ -13,7 +13,7 @@ unix:!macx:!symbian: {
     INCLUDEPATH += /usr/include/kde4
 }
 
-TARGET = owncloud_sync_qt
+TARGET = sync-qt-owncloud
 TEMPLATE = app
 
 
@@ -38,7 +38,7 @@ INCLUDEPATH += qwebdav/
 #SOURCES += $$[QT_INSTALL_PREFIX]/src/3rdparty/sqlite/sqlite3.c
 
 RESOURCES += \
-    owncloud_sync.qrc
+    sync_qt.qrc
 
 
 unix:!symbian:!maemo5:isEmpty(MEEGO_VERSION_MAJOR) {
@@ -47,13 +47,13 @@ unix:!symbian:!maemo5:isEmpty(MEEGO_VERSION_MAJOR) {
 }
 
 unix:!symbian:!maemo5:isEmpty(MEEGO_VERSION_MAJOR) {
-    desktopfile.files = $${TARGET}.desktop
+    desktopfile.files = sync_qt_owncloud.desktop
     desktopfile.path = /usr/share/applications
     INSTALLS += desktopfile
 }
 
 unix:!symbian:!maemo5:isEmpty(MEEGO_VERSION_MAJOR) {
-    icon.files = owncloud_sync.png
+    icon.files = sync_qt.png
     icon.path = /usr/share/icons/hicolor/64x64/apps
     INSTALLS += icon
 }
