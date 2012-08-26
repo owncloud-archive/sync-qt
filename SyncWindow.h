@@ -31,7 +31,7 @@
 
 class OwnPasswordManager;
 class QTimer;
-class OwnCloudSync;
+class SyncQtOwnCloud;
 class QSignalMapper;
 class QMenu;
 class QListWidgetItem;
@@ -72,8 +72,8 @@ private:
     QSet<QString> mGlobalFilters;
     QSystemTrayIcon *mSystemTray;
     QMenu *mSystemTrayMenu;
-    QList<OwnCloudSync*> mAccounts;
-    OwnCloudSync *mCurrentAccountEdit;
+    QList<SyncQtOwnCloud*> mAccounts;
+    SyncQtOwnCloud *mCurrentAccountEdit;
     QStringList mAccountNames;
     qint64 mTotalSyncs;
     bool mBusy;
@@ -91,7 +91,7 @@ private:
     bool mConflictsExist;
     QString mConfigDirectory;
     QSignalMapper *mAccountsSignalMapper;
-    QQueue<OwnCloudSync*> mAccountsReadyToSync;
+    QQueue<SyncQtOwnCloud*> mAccountsReadyToSync;
     bool mQuitAction;
     bool mDisplayDebug;
     bool mHideOnStart;
@@ -110,8 +110,8 @@ private:
     void processNextStep();
     void saveLogs();
     void rebuildAccountsTable();
-    OwnCloudSync* addAccount(QString name);
-    OwnCloudSync* getAccount(QString name);
+    SyncQtOwnCloud* addAccount(QString name);
+    SyncQtOwnCloud* getAccount(QString name);
     void accountEnabledChanged(int row);
     void editConfig(int row);
     void listFilters(int row);
@@ -163,12 +163,12 @@ public slots:
     // Owncloud related signals
     void slotToLog(QString text);
     void slotToStatus(QString text);
-    void slotConflictExists(OwnCloudSync*);
-    void slotConflictResolved(OwnCloudSync*);
+    void slotConflictExists(SyncQtOwnCloud*);
+    void slotConflictResolved(SyncQtOwnCloud*);
     void slotProgressFile(qint64 value);
     void slotProgressTotal(qint64 value);
-    void slotReadyToSync(OwnCloudSync*);
-    void slotFinishedSync(OwnCloudSync*);
+    void slotReadyToSync(SyncQtOwnCloud*);
+    void slotFinishedSync(SyncQtOwnCloud*);
     void slotToMessage(QString caption, QString body,
     QSystemTrayIcon::MessageIcon icon);
 

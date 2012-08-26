@@ -22,8 +22,7 @@
 #include "ui_SyncWindow.h"
 #include "sqlite3_util.h"
 #include "QWebDAV.h"
-#include "OwnCloudSync.h"
-#include "OwnPasswordManager.h"
+#include "SyncQtOwnCloud.h"
 
 #include <QFile>
 #include <QtSql/QSqlDatabase>
@@ -116,16 +115,6 @@ SyncWindow::SyncWindow(QWidget *parent) :
     logsDir.mkpath(QDir::toNativeSeparators(mConfigDirectory+"/logs"));
     importGlobalFilters(true);
     updateSharedFilterList();
-
-    // Get the password manager
-    mPasswordManager = new OwnPasswordManager(this,winId());
-    connect(mPasswordManager,SIGNAL(managerReady()),
-            this,SLOT(passwordManagerReady()));
-
-    // Check if the passwordManager is already ready
-    if(mPasswordManager->isReady() && !mProcessedPasswordManager) {
-        passwordManagerReady();
-    }
 }
 
 void SyncWindow::passwordManagerReady()
@@ -246,30 +235,30 @@ void SyncWindow::systemTrayActivated(QSystemTrayIcon::ActivationReason reason)
     }
 }
 
-OwnCloudSync* SyncWindow::addAccount(QString name)
+SyncQtOwnCloud* SyncWindow::addAccount(QString name)
 {
-    OwnCloudSync *account = new OwnCloudSync(name,mPasswordManager,
+    SyncQtOwnCloud *account = new SyncQtOwnCloud(name,
                                              mSharedFilters,mConfigDirectory);
     mAccounts.append(account);
     mAccountNames.append(name);
 
     // Connect the signals
-    connect(account,SIGNAL(conflictExists(OwnCloudSync*)),
-            this,SLOT(slotConflictExists(OwnCloudSync*)));
-    connect(account,SIGNAL(conflictResolved(OwnCloudSync*)),
-            this,SLOT(slotConflictResolved(OwnCloudSync*)));
+    connect(account,SIGNAL(conflictExists(SyncQtOwnCloud*)),
+            this,SLOT(slotConflictExists(SyncQtOwnCloud*)));
+    connect(account,SIGNAL(conflictResolved(SyncQtOwnCloud*)),
+            this,SLOT(slotConflictResolved(SyncQtOwnCloud*)));
     connect(account,SIGNAL(progressFile(qint64)),
             this,SLOT(slotProgressFile(qint64)));
     connect(account,SIGNAL(progressTotal(qint64)),
             this,SLOT(slotProgressTotal(qint64)));
-    connect(account,SIGNAL(readyToSync(OwnCloudSync*)),
-            this,SLOT(slotReadyToSync(OwnCloudSync*)));
+    connect(account,SIGNAL(readyToSync(SyncQtOwnCloud*)),
+            this,SLOT(slotReadyToSync(SyncQtOwnCloud*)));
     connect(account,SIGNAL(toLog(QString)),
             this,SLOT(slotToLog(QString)));
     connect(account,SIGNAL(toStatus(QString)),
             this,SLOT(slotToStatus(QString)));
-    connect(account,SIGNAL(finishedSync(OwnCloudSync*)),
-            this,SLOT(slotFinishedSync(OwnCloudSync*)));
+    connect(account,SIGNAL(finishedSync(SyncQtOwnCloud*)),
+            this,SLOT(slotFinishedSync(SyncQtOwnCloud*)));
     connect(account,SIGNAL(toMessage(QString,QString,
                                      QSystemTrayIcon::MessageIcon)),
             this,SLOT(slotToMessage(QString,QString,
@@ -314,7 +303,7 @@ void SyncWindow::on_buttonSave_clicked()
             syncDebug() << "Account name already taken!!";
             ui->lineName->setFocus();
         } else { // Good, create a new account
-            OwnCloudSync *account = addAccount(ui->lineName->text());
+            SyncQtOwnCloud *account = addAccount(ui->lineName->text());
             account->initialize(ui->labelHttp->text()+host,
                                 ui->lineUser->text(),
                                 ui->linePassword->text(),
@@ -465,7 +454,7 @@ void SyncWindow::on_conflict_clicked()
 
 }
 
-OwnCloudSync* SyncWindow::getAccount(QString name)
+SyncQtOwnCloud* SyncWindow::getAccount(QString name)
 {
     // Get the account by looping through the list until we find the index
     for( int i = 0; i < mAccountNames.size(); i++ ) {
@@ -548,14 +537,14 @@ void SyncWindow::accountEnabledChanged(int row)
 {
     mAccounts[row]->setEnabled(!mAccounts[row]->isEnabled());
 }
-void SyncWindow::slotConflictExists(OwnCloudSync* oc)
+void SyncWindow::slotConflictExists(SyncQtOwnCloud* oc)
 {
     ui->conflict->setEnabled(true);
     mConflictsExist = true;
     updateStatus();
 }
 
-void SyncWindow::slotConflictResolved(OwnCloudSync* oc)
+void SyncWindow::slotConflictResolved(SyncQtOwnCloud* oc)
 {
 
 }
@@ -577,7 +566,7 @@ void SyncWindow::on_buttonCancel_clicked()
     ui->actionEnable_Delete_Account->setVisible(false);
 }
 
-void SyncWindow::slotReadyToSync(OwnCloudSync* oc)
+void SyncWindow::slotReadyToSync(SyncQtOwnCloud* oc)
 {
     mAccountsReadyToSync.enqueue(oc);
     syncDebug() << oc->getName() << " is ready to sync!";
@@ -600,7 +589,7 @@ void SyncWindow::processNextStep()
     if( mAccountsReadyToSync.size() != 0 ) {
         mBusy = true;
         mTotalSyncs++;
-        OwnCloudSync *account = mAccountsReadyToSync.dequeue();
+        SyncQtOwnCloud *account = mAccountsReadyToSync.dequeue();
         ui->statusBar->showMessage(tr("Version %1: Synchronizing %2")
                                    .arg(_OCS_VERSION).arg(account->getName()));
         account->sync();
@@ -613,7 +602,7 @@ void SyncWindow::processNextStep()
     }
 }
 
-void SyncWindow::slotFinishedSync(OwnCloudSync *oc)
+void SyncWindow::slotFinishedSync(SyncQtOwnCloud *oc)
 {
     syncDebug() << oc->getName() << " just finishied.";
     rebuildAccountsTable();

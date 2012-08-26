@@ -35,14 +35,14 @@ class QFileSystemWatcher;
 class QNetworkReply;
 class OwnPasswordManager;
 
-class OwnCloudSync : public QObject
+class SyncQtOwnCloud : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit OwnCloudSync(QString name, OwnPasswordManager *passwordManager,
-                          QSet<QString> *globalFilters,QString configDir);
-    ~OwnCloudSync();
+    explicit SyncQtOwnCloud(QString name,
+                            QSet<QString> *globalFilters,QString configDir);
+    ~SyncQtOwnCloud();
     void initialize(QString host, QString user, QString pass, QString remote,
                     QString local, qint64 time);
 
@@ -101,7 +101,6 @@ public:
 
 private:
     bool mStorePasswordInDB;
-    OwnPasswordManager *mPasswordManager;
     QWebDAV *mWebdav;
     bool mIsEnabled;
     bool mAllowedToSync;
@@ -195,12 +194,12 @@ signals:
     void toStatus(QString text);
     void toMessage(QString caption, QString body,
                    QSystemTrayIcon::MessageIcon icon);
-    void conflictExists(OwnCloudSync*);
-    void conflictResolved(OwnCloudSync*);
+    void conflictExists(SyncQtOwnCloud*);
+    void conflictResolved(SyncQtOwnCloud*);
     void progressFile(qint64 value);
     void progressTotal(qint64 value);
-    void readyToSync(OwnCloudSync*);
-    void finishedSync(OwnCloudSync*);
+    void readyToSync(SyncQtOwnCloud*);
+    void finishedSync(SyncQtOwnCloud*);
 
 public slots:
     void directoryListingError(QString url);

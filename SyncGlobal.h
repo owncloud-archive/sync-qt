@@ -24,6 +24,7 @@
 
 #define _OCS_VERSION "0.5.3"
 #define _OCS_DB_VERSION 2
+#define _OCS_APP_NAME "SyncQt::ownCloud"
 
 /*! \brief An internal OwnCloud Sync Qt debugging class.
   * May be used like the normal Qt qDebug() like so:

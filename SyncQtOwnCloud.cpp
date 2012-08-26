@@ -17,10 +17,9 @@
  *    along with owncloud_sync.  If not, see <http://www.gnu.org/licenses/>.
  ******************************************************************************/
 #include "SyncGlobal.h"
-#include "OwnCloudSync.h"
+#include "SyncQtOwnCloud.h"
 #include "sqlite3_util.h"
 #include "QWebDAV.h"
-#include "OwnPasswordManager.h"
 
 #include <QFile>
 #include <QtSql/QSqlDatabase>
@@ -35,11 +34,14 @@
 #include <QFileDialog>
 #include <QTableWidgetItem>
 #include <QComboBox>
+#include <QEventLoop>
 
-OwnCloudSync::OwnCloudSync(QString name, OwnPasswordManager *passwordManager,
+#include <keychain.h>
+
+SyncQtOwnCloud::SyncQtOwnCloud(QString name,
                            QSet<QString> *globalFilters,
                            QString configDir)
-    : mAccountName(name),mPasswordManager(passwordManager),
+    : mAccountName(name),
       mGlobalFilters(globalFilters),mConfigDirectory(configDir)
 {
     mBusy = false;
@@ -48,8 +50,6 @@ OwnCloudSync::OwnCloudSync(QString name, OwnPasswordManager *passwordManager,
     // Set the pointers so we can delete them without worrying :)
     mSyncTimer = 0;
     mFileWatcher = 0;
-
-    mStorePasswordInDB = false;
     mHardStop = false;
     mIsFirstRun = true;
     mDownloadingConflictingFile = false;
@@ -106,12 +106,19 @@ OwnCloudSync::OwnCloudSync(QString name, OwnPasswordManager *passwordManager,
             readConfigFromDB();
             //ui->buttonSave->setDisabled(true);
             syncDebug() << "Checking configuration!";
-            QString password = mPasswordManager->getPassword(mAccountName);
-            if( password == "") {
-                mStorePasswordInDB = true;
+            QKeychain::ReadPasswordJob passwdJob(_OCS_APP_NAME);
+            passwdJob.setAutoDelete(false);
+            passwdJob.setKey(mAccountName);
+            QEventLoop passwdLoop;
+            passwdLoop.connect( &passwdJob, SIGNAL(finished(QKeychain::Job*)),
+                                &passwdLoop,SLOT(quit()));
+            passwdJob.start();
+            passwdLoop.exec();
+            if(passwdJob.error()) {
+                mPassword = "";
+                syncDebug() << "Error: Could not read password.";
             } else {
-                mPassword = password;
-                mStorePasswordInDB = false;
+                mPassword = passwdJob.textData();
             }
             initialize();
         }
@@ -125,19 +132,19 @@ OwnCloudSync::OwnCloudSync(QString name, OwnPasswordManager *passwordManager,
     updateStatus();
 }
 
-void OwnCloudSync::errorFileLocked(QString fileName)
+void SyncQtOwnCloud::errorFileLocked(QString fileName)
 {
     emit toLog(tr("File %s locked. Skipping!").arg(fileName));
     processNextStep();
 }
 
-void OwnCloudSync::setSaveDBTime(qint64 seconds)
+void SyncQtOwnCloud::setSaveDBTime(qint64 seconds)
 {
     mSaveDBTimer->stop();
     mSaveDBTimer->start(seconds*1000);
 }
 
-void OwnCloudSync::setEnabled( bool enabled)
+void SyncQtOwnCloud::setEnabled( bool enabled)
 {
     mIsEnabled = enabled;
     saveConfigToDB();
@@ -160,7 +167,7 @@ void OwnCloudSync::setEnabled( bool enabled)
     }
 }
 
-void OwnCloudSync::directoryListingError(QString url)
+void SyncQtOwnCloud::directoryListingError(QString url)
 {
     if(mSettingsCheck) {
         syncDebug() << "Something wrong with the settings, please check.";
@@ -169,7 +176,7 @@ void OwnCloudSync::directoryListingError(QString url)
     }
 }
 
-void OwnCloudSync::updateStatus()
+void SyncQtOwnCloud::updateStatus()
 {
     if( !mBusy ) {
         // ???
@@ -181,7 +188,7 @@ void OwnCloudSync::updateStatus()
     }
 }
 
-void OwnCloudSync::timeToSync()
+void SyncQtOwnCloud::timeToSync()
 {
     if(mIsPaused) { // Paused, skip this sync cycle
         return;
@@ -190,7 +197,7 @@ void OwnCloudSync::timeToSync()
     emit readyToSync(this);
 }
 
-void OwnCloudSync::sync()
+void SyncQtOwnCloud::sync()
 {
     mNeedsSync = true;
     mNotifySyncEmitted = false;
@@ -262,13 +269,13 @@ void OwnCloudSync::sync()
     restartRequestTimer();
 }
 
-OwnCloudSync::~OwnCloudSync()
+SyncQtOwnCloud::~SyncQtOwnCloud()
 {
     delete mWebdav;
     mDB.close();
 }
 
-void OwnCloudSync::processDirectoryListing(QList<QWebDAV::FileInfo> fileInfo)
+void SyncQtOwnCloud::processDirectoryListing(QList<QWebDAV::FileInfo> fileInfo)
 {
     stopRequestTimer();
     if( mSettingsCheck ) {
@@ -324,7 +331,7 @@ void OwnCloudSync::processDirectoryListing(QList<QWebDAV::FileInfo> fileInfo)
     }
 }
 
-void OwnCloudSync::processFileReady(QNetworkReply *reply,QString fileName)
+void SyncQtOwnCloud::processFileReady(QNetworkReply *reply,QString fileName)
 {
     fileName = stringRemoveBasePath(fileName,mRemoteDirectory);
     // Temporarily remove this watcher so we don't get a message when
@@ -366,7 +373,7 @@ void OwnCloudSync::processFileReady(QNetworkReply *reply,QString fileName)
     processNextStep();
 }
 
-void OwnCloudSync::processNextStep()
+void SyncQtOwnCloud::processNextStep()
 {
     stopRequestTimer();
     if(mHardStop) { // Hard stop, usually indicates account will be removed
@@ -421,7 +428,7 @@ void OwnCloudSync::processNextStep()
     updateStatus();
 }
 
-QString OwnCloudSync::getLastSync()
+QString SyncQtOwnCloud::getLastSync()
 {
     QSqlQuery query(QSqlDatabase::database(mAccountName));
     query.exec("SELECT lastsync FROM config;");
@@ -431,7 +438,7 @@ QString OwnCloudSync::getLastSync()
     return QString("");
 }
 
-void OwnCloudSync::scanLocalDirectory( QString dirPath)
+void SyncQtOwnCloud::scanLocalDirectory( QString dirPath)
 {
     QDir dir(dirPath);
     dir.setFilter(QDir::Files|QDir::NoDot|QDir::NoDotDot|QDir::AllEntries
@@ -451,7 +458,7 @@ void OwnCloudSync::scanLocalDirectory( QString dirPath)
     }
 }
 
-void OwnCloudSync::processLocalFile(QString name)
+void SyncQtOwnCloud::processLocalFile(QString name)
 {
     QFileInfo file( name );
     QString type;
@@ -476,7 +483,7 @@ void OwnCloudSync::processLocalFile(QString name)
     }
 }
 
-void OwnCloudSync::updateDBLocalFile(QString name, qint64 size, qint64 last,
+void SyncQtOwnCloud::updateDBLocalFile(QString name, qint64 size, qint64 last,
                                    QString type )
 {
     // Do not upload the server conflict files
@@ -526,7 +533,7 @@ void OwnCloudSync::updateDBLocalFile(QString name, qint64 size, qint64 last,
     //         << file.size();
 }
 
-QSqlQuery OwnCloudSync::queryDBFileInfo(QString fileName, QString table)
+QSqlQuery SyncQtOwnCloud::queryDBFileInfo(QString fileName, QString table)
 {
     QSqlQuery query(QSqlDatabase::database(mAccountName));
     query.exec("SELECT * FROM " + table + " WHERE file_name = '" +
@@ -534,14 +541,14 @@ QSqlQuery OwnCloudSync::queryDBFileInfo(QString fileName, QString table)
     return query;
 }
 
-QSqlQuery OwnCloudSync::queryDBAllFiles(QString table)
+QSqlQuery SyncQtOwnCloud::queryDBAllFiles(QString table)
 {
     QSqlQuery query(QSqlDatabase::database(mAccountName));
     query.exec("SELECT * FROM " + table + ";");
     return query;
 }
 
-void OwnCloudSync::syncFiles()
+void SyncQtOwnCloud::syncFiles()
 {
     QList<QString> localDirs;
     QSqlQuery localQuery;
@@ -733,7 +740,7 @@ void OwnCloudSync::syncFiles()
     processNextStep();
 }
 
-void OwnCloudSync::setFileConflict(QString name, qint64 size, QString server_last,
+void SyncQtOwnCloud::setFileConflict(QString name, qint64 size, QString server_last,
                                  QString local_last)
 {
     QSqlQuery conflict(QSqlDatabase::database(mAccountName));
@@ -754,7 +761,7 @@ void OwnCloudSync::setFileConflict(QString name, qint64 size, QString server_las
     emit conflictExists(this);
 }
 
-void OwnCloudSync::download( FileInfo file )
+void SyncQtOwnCloud::download( FileInfo file )
 {
     syncDebug() << "Will download file: " << file.name;
     mCurrentFileSize = file.size;
@@ -771,7 +778,7 @@ void OwnCloudSync::download( FileInfo file )
     updateStatus();
 }
 
-void OwnCloudSync::upload( FileInfo fileInfo)
+void SyncQtOwnCloud::upload( FileInfo fileInfo)
 {
     QString localName = fileInfo.name;
     localName = stringRemoveBasePath(localName,mRemoteDirectory);
@@ -793,7 +800,7 @@ void OwnCloudSync::upload( FileInfo fileInfo)
     updateStatus();
 }
 
-void OwnCloudSync::updateDBDownload(QString name)
+void SyncQtOwnCloud::updateDBDownload(QString name)
 {
     // This seems redundant, a little, really.
     QString fileName = mLocalDirectory+name;
@@ -838,7 +845,7 @@ void OwnCloudSync::updateDBDownload(QString name)
     mTotalTransfered += mCurrentFileSize;
 }
 
-void OwnCloudSync::updateDBUpload(QString name)
+void SyncQtOwnCloud::updateDBUpload(QString name)
 {
     QString fileName = mLocalDirectory+name;
     QFileInfo file(fileName);
@@ -887,7 +894,7 @@ void OwnCloudSync::updateDBUpload(QString name)
     processNextStep();
 }
 
-void OwnCloudSync::transferProgress(qint64 current, qint64 total)
+void SyncQtOwnCloud::transferProgress(qint64 current, qint64 total)
 {
     stopRequestTimer();
     // First update the current file progress bar
@@ -908,7 +915,7 @@ void OwnCloudSync::transferProgress(qint64 current, qint64 total)
     restartRequestTimer();
 }
 
-void OwnCloudSync::updateDBVersion(int fromVersion)
+void SyncQtOwnCloud::updateDBVersion(int fromVersion)
 {
     QSqlQuery query(QSqlDatabase::database(mAccountName));
     switch(fromVersion) {
@@ -949,7 +956,7 @@ void OwnCloudSync::updateDBVersion(int fromVersion)
     }
 }
 
-void OwnCloudSync::createDataBase()
+void SyncQtOwnCloud::createDataBase()
 {
     syncDebug() << "Creating Database!";
     if(!mDB.open()) {
@@ -1039,7 +1046,7 @@ void OwnCloudSync::createDataBase()
 
 }
 
-void OwnCloudSync::readConfigFromDB()
+void SyncQtOwnCloud::readConfigFromDB()
 {
     QSqlQuery query(QSqlDatabase::database(mAccountName));
 
@@ -1078,14 +1085,14 @@ void OwnCloudSync::readConfigFromDB()
     }
 }
 
-void OwnCloudSync::removeFilter(QString filter)
+void SyncQtOwnCloud::removeFilter(QString filter)
 {
     mFilters.remove(filter);
     QSqlQuery query(QSqlDatabase::database(mAccountName));
     query.exec(QString("DELETE FROM filters WHERE filter='%1';").arg(filter));
 }
 
-void OwnCloudSync::addFilter(QString filter)
+void SyncQtOwnCloud::addFilter(QString filter)
 {
     if(!mFilters.contains(filter)) {
         mFilters.insert(filter);
@@ -1094,7 +1101,7 @@ void OwnCloudSync::addFilter(QString filter)
     }
 }
 
-void OwnCloudSync::saveConfigToDB()
+void SyncQtOwnCloud::saveConfigToDB()
 {
     QSqlQuery query(QSqlDatabase::database(mAccountName));
     query.exec("SELECT * from config;");
@@ -1102,27 +1109,27 @@ void OwnCloudSync::saveConfigToDB()
         QString update = QString("UPDATE config SET host='%1',username='%2',"
                        "password='%3',localdir='%4',updatetime='%5',"
                                  "enabled='%6',remotedir='%7';").arg(mHost)
-                .arg(mUsername).arg(mStorePasswordInDB?mPassword:"").arg(mLocalDirectory)
+                .arg(mUsername).arg("").arg(mLocalDirectory)
                        .arg(mUpdateTime).arg(mIsEnabled?"yes":"no")
                        .arg(mRemoteDirectory);
         query.exec(update);
     } else { // Insert
         QString add = QString("INSERT INTO config values('%1','%2',"
                               "'%3','%4','%5','%6','%7');").arg(mHost)
-                .arg(mUsername).arg(mStorePasswordInDB?mPassword:"").arg(mLocalDirectory)
+                .arg(mUsername).arg("").arg(mLocalDirectory)
                        .arg(mUpdateTime).arg(mIsEnabled?"yes":"no")
                        .arg(mRemoteDirectory);
         query.exec(add);
     }
 }
 
-void OwnCloudSync::initialize()
+void SyncQtOwnCloud::initialize()
 {
     initialize(mHost,mUsername,mPassword,mRemoteDirectory,mLocalDirectory,
                mUpdateTime);
 }
 
-void OwnCloudSync::settingsAreFine()
+void SyncQtOwnCloud::settingsAreFine()
 {
     if(mIsEnabled) {
         start();
@@ -1131,7 +1138,7 @@ void OwnCloudSync::settingsAreFine()
     }
 }
 
-void OwnCloudSync::start()
+void SyncQtOwnCloud::start()
 {
     if(mSyncTimer)
         delete mSyncTimer;
@@ -1140,7 +1147,7 @@ void OwnCloudSync::start()
     mSyncTimer->start(mUpdateTime*1000);
 }
 
-void OwnCloudSync::stop()
+void SyncQtOwnCloud::stop()
 {
     if( mNeedsSync && !mNotifySyncEmitted )
         emit readyToSync(this);
@@ -1151,14 +1158,14 @@ void OwnCloudSync::stop()
     mSyncTimer = 0;
 }
 
-void OwnCloudSync::deleteWatcher()
+void SyncQtOwnCloud::deleteWatcher()
 {
     // Delete the watcher. Should only be called when we are quitting!!!
     delete mFileWatcher;
     mFileWatcher = 0;
 }
 
-void OwnCloudSync::localDirectoryChanged(QString name)
+void SyncQtOwnCloud::localDirectoryChanged(QString name)
 {
     // Maybe this was caused by us renaming a file, just wait it out
     while (mFileAccessBusy ) {
@@ -1189,7 +1196,7 @@ void OwnCloudSync::localDirectoryChanged(QString name)
     }
 }
 
-void OwnCloudSync::localFileChanged(QString name)
+void SyncQtOwnCloud::localFileChanged(QString name)
 {
     //syncDebug() << "Checking file status: " << name;
     QFileInfo info(name);
@@ -1205,7 +1212,7 @@ void OwnCloudSync::localFileChanged(QString name)
     }
 }
 
-void OwnCloudSync::scanLocalDirectoryForNewFiles(QString path)
+void SyncQtOwnCloud::scanLocalDirectoryForNewFiles(QString path)
 {
     QString remote;
     //path = path=="/"?"":path;
@@ -1241,7 +1248,7 @@ void OwnCloudSync::scanLocalDirectoryForNewFiles(QString path)
     }
 }
 
-void OwnCloudSync::saveDBToFile()
+void SyncQtOwnCloud::saveDBToFile()
 {
     if( sqlite3_util::sqliteDBMemFile( mDB, mDBFileName, true ) ) {
         syncDebug() << "Successfully saved DB to file!";
@@ -1249,13 +1256,21 @@ void OwnCloudSync::saveDBToFile()
         syncDebug() << "Failed to save DB to file!";
     }
 
-    // Save password to wallet manager?
-    if (!mStorePasswordInDB) {
-        mPasswordManager->savePassword(mAccountName,mPassword);
+    QKeychain::WritePasswordJob passwdJob(_OCS_APP_NAME);
+    passwdJob.setAutoDelete(false);
+    passwdJob.setKey( mAccountName );
+    passwdJob.setTextData(mPassword);
+    QEventLoop passwdLoop;
+    passwdLoop.connect( &passwdJob, SIGNAL(finished(QKeychain::Job*)),
+                        &passwdLoop,SLOT(quit()));
+    passwdJob.start();
+    passwdLoop.exec();
+    if(passwdJob.error()) {
+        syncDebug() << "Error: Unable to save password!";
     }
 }
 
-void OwnCloudSync::loadDBFromFile()
+void SyncQtOwnCloud::loadDBFromFile()
 {
     if( sqlite3_util::sqliteDBMemFile( mDB, mDBFileName, false ) ) {
         syncDebug() << "Successfully loaded DB from file!";
@@ -1264,7 +1279,7 @@ void OwnCloudSync::loadDBFromFile()
     }
 }
 
-void OwnCloudSync::deleteRemovedFiles()
+void SyncQtOwnCloud::deleteRemovedFiles()
 {
     QStringList localCopy;
     QStringList serverCopy;
@@ -1370,7 +1385,7 @@ void OwnCloudSync::deleteRemovedFiles()
 
 }
 
-void OwnCloudSync::deleteFromLocal(QString name, bool isDir)
+void SyncQtOwnCloud::deleteFromLocal(QString name, bool isDir)
 {
     // Remove the watcher before deleting.
     QString localName = stringRemoveBasePath(name,mRemoteDirectory);
@@ -1396,7 +1411,7 @@ void OwnCloudSync::deleteFromLocal(QString name, bool isDir)
     dropFromDB("server_files_processing","file_name",name);
 }
 
-void OwnCloudSync::deleteFromServer(QString name)
+void SyncQtOwnCloud::deleteFromServer(QString name)
 {
     // Delete from server
     mWebdav->deleteFile(name);
@@ -1407,13 +1422,13 @@ void OwnCloudSync::deleteFromServer(QString name)
     dropFromDB("local_files_processing","file_name",name);
 }
 
-void OwnCloudSync::dropFromDB(QString table, QString column, QString condition)
+void SyncQtOwnCloud::dropFromDB(QString table, QString column, QString condition)
 {
     QSqlQuery drop(QSqlDatabase::database(mAccountName));
     drop.exec("DELETE FROM "+table+" WHERE "+column+"='"+condition+"';");
 }
 
-void OwnCloudSync::processFileConflict(QString name, QString wins)
+void SyncQtOwnCloud::processFileConflict(QString name, QString wins)
 {
     QString localName = stringRemoveBasePath(name,mRemoteDirectory);
     if( wins == "local" ) {
@@ -1443,7 +1458,7 @@ void OwnCloudSync::processFileConflict(QString name, QString wins)
     }
 }
 
-void OwnCloudSync::clearFileConflict(QString name)
+void SyncQtOwnCloud::clearFileConflict(QString name)
 {
     QSqlQuery query(QSqlDatabase::database(mAccountName));
     QString statement = QString("DELETE FROM conflicts where file_name='%1';")
@@ -1463,14 +1478,14 @@ void OwnCloudSync::clearFileConflict(QString name)
     query.exec(statement);
 }
 
-QString OwnCloudSync::getConflictName(QString name)
+QString SyncQtOwnCloud::getConflictName(QString name)
 {
     QFileInfo info(name);
     return QString(info.absolutePath()+
                    "/_ocs_serverconflict."+info.fileName());
 }
 
-void OwnCloudSync::initialize(QString host, QString user, QString pass,
+void SyncQtOwnCloud::initialize(QString host, QString user, QString pass,
                               QString remote, QString local, qint64 time)
 {
     mHost = stringRemoveBasePath(host,"/files/webdav.php");
@@ -1518,7 +1533,7 @@ void OwnCloudSync::initialize(QString host, QString user, QString pass,
     restartRequestTimer();
 }
 
-QStringList OwnCloudSync::getFilterList()
+QStringList SyncQtOwnCloud::getFilterList()
 {
     QStringList list;
     QList<QString> filters = mFilters.toList();
@@ -1529,7 +1544,7 @@ QStringList OwnCloudSync::getFilterList()
     return list;
 }
 
-bool OwnCloudSync::isFileFiltered(QString name)
+bool SyncQtOwnCloud::isFileFiltered(QString name)
 {
     // Standard filters applicable to *ALL* files
     if( name == "." || name == ".." ||
@@ -1563,7 +1578,7 @@ bool OwnCloudSync::isFileFiltered(QString name)
     return false;
 }
 
-void OwnCloudSync::deleteAccount()
+void SyncQtOwnCloud::deleteAccount()
 {
     // Stop all transfer processes
     mHardStop = true;
@@ -1579,7 +1594,7 @@ void OwnCloudSync::deleteAccount()
     dbFile.remove();
 }
 
-void OwnCloudSync::requestTimedout()
+void SyncQtOwnCloud::requestTimedout()
 {
     //emit toLog(tr("The request timed out"));
     mBusy = false;
@@ -1591,17 +1606,17 @@ void OwnCloudSync::requestTimedout()
     stopRequestTimer();
 }
 
-void OwnCloudSync::restartRequestTimer()
+void SyncQtOwnCloud::restartRequestTimer()
 {
     mRequestTimer->start(7000);
 }
 
-void OwnCloudSync::stopRequestTimer()
+void SyncQtOwnCloud::stopRequestTimer()
 {
     mRequestTimer->stop();
 }
 
-bool OwnCloudSync::needsSync()
+bool SyncQtOwnCloud::needsSync()
 {
     if(mLastSyncAborted != SYNCFINISHED ) {
         return false;
@@ -1609,7 +1624,7 @@ bool OwnCloudSync::needsSync()
     return mNeedsSync;
 }
 
-QString OwnCloudSync::stringRemoveBasePath(QString path, QString base)
+QString SyncQtOwnCloud::stringRemoveBasePath(QString path, QString base)
 {
     if( base != "/" )  {
         path.replace(QRegExp("^"+base),"");
@@ -1617,13 +1632,13 @@ QString OwnCloudSync::stringRemoveBasePath(QString path, QString base)
     return path;
 }
 
-void OwnCloudSync::serverDirectoryCreated(QString name)
+void SyncQtOwnCloud::serverDirectoryCreated(QString name)
 {
     emit toLog(tr("Created directory on server: %1").arg(name));
     processNextStep();
 }
 
-void OwnCloudSync::copyLocalProcessing(QString fileName)
+void SyncQtOwnCloud::copyLocalProcessing(QString fileName)
 {
     //syncDebug() << "Copying DB Process Local: " << fileName;
                 QSqlQuery queryProcessing(QSqlDatabase::database(mAccountName));
@@ -1650,7 +1665,7 @@ void OwnCloudSync::copyLocalProcessing(QString fileName)
                                  "file_name='%1';").arg(fileName));
 }
 
-void OwnCloudSync::copyServerProcessing(QString fileName)
+void SyncQtOwnCloud::copyServerProcessing(QString fileName)
 {
     //syncDebug() << "Copying DB Process Server: " << fileName;
     QSqlQuery queryProcessing(QSqlDatabase::database(mAccountName));

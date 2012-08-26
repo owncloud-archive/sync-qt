@@ -11,6 +11,10 @@ unix:!macx:!symbian: {
     HEADERS +=
     SOURCES +=
     INCLUDEPATH += /usr/include/kde4
+    # I hate myself for including hard coded links, but this is just
+    # a test anyway :p
+    INCLUDEPATH += ${HOME}/apps/owncloud_env/include/qtkeychain
+    LIBS += -L${HOME}/apps/owncloud_env/lib64 -lqtkeychain
 }
 
 TARGET = sync-qt-owncloud
@@ -21,15 +25,13 @@ SOURCES += main.cpp\
         sqlite3_util.cpp \
         SyncWindow.cpp \
     qwebdav/QWebDAV.cpp \
-    OwnCloudSync.cpp \
-    OwnPasswordManager.cpp
+    SyncQtOwnCloud.cpp
 
 HEADERS  += sqlite3_util.h \
             SyncWindow.h \
             qwebdav/QWebDAV.h \
-    OwnCloudSync.h \
-    SyncGlobal.h \
-    OwnPasswordManager.h
+    SyncQtOwnCloud.h \
+    SyncGlobal.h
 
 FORMS    += SyncWindow.ui
 INCLUDEPATH += qwebdav/
